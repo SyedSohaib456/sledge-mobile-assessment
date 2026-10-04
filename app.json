@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "FieldCapture",
+    "slug": "sledge-mobile-assessment",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0F1923"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sledge.fieldcapture"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F1923"
+      },
+      "package": "com.sledge.fieldcapture"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FieldCapture needs access to your photo library to attach images to captures."
+        }
+      ]
+    ],
+    "newArchEnabled": true
+  }
+}
