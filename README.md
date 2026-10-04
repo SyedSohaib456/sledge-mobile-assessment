@@ -4,7 +4,7 @@ Offline-first React Native + TypeScript field capture prototype built with Expo 
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo.MP4
+https://github.com/SyedSohaib456/sledge-mobile-assessment/raw/main/assets/demo.MP4
 
 ## Requirement
 
