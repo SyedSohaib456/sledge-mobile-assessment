@@ -1,10 +1,13 @@
 import React from 'react';
-import { Image, StyleSheet } from 'react-native';
-import { Capture } from '../store/captureStore';
+import { Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { Capture, MAX_RETRIES } from '../store/captureStore';
 import { Box, Text } from '../theme';
 import { SyncBadge } from './SyncBadge';
 
-type Props = { capture: Capture };
+type Props = {
+  capture: Capture;
+  onDelete: (id: string) => void;
+};
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -16,7 +19,7 @@ function formatDate(ts: number): string {
   });
 }
 
-export function CaptureCard({ capture }: Props) {
+export function CaptureCard({ capture, onDelete }: Props) {
   return (
     <Box
       backgroundColor="cardBackground"
@@ -39,17 +42,32 @@ export function CaptureCard({ capture }: Props) {
           </Text>
         </Box>
 
-        {capture.photoUri ? (
-          <Image source={{ uri: capture.photoUri }} style={styles.thumbnail} />
+        <Box flexDirection="row" alignItems="flex-start" style={{ gap: 8 }}>
+          {capture.photoUri ? (
+            <Image source={{ uri: capture.photoUri }} style={styles.thumbnail} />
+          ) : null}
+          <TouchableOpacity
+            onPress={() => onDelete(capture.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.deleteBtn}>
+            <Text style={styles.deleteIcon}>{'\u2715'}</Text>
+          </TouchableOpacity>
+        </Box>
+      </Box>
+
+      <Box marginTop="s" flexDirection="row" alignItems="center" justifyContent="space-between">
+        <SyncBadge status={capture.syncStatus} />
+        {capture.retryCount > 0 ? (
+          <Text variant="caption" color="textMuted">
+            {capture.retryCount >= MAX_RETRIES
+              ? 'Max retries reached'
+              : `Retry ${capture.retryCount}/${MAX_RETRIES}`}
+          </Text>
         ) : null}
       </Box>
 
-      <Box marginTop="s" flexDirection="row" alignItems="center">
-        <SyncBadge status={capture.syncStatus} />
-      </Box>
-
       {capture.syncStatus === 'error' && capture.syncError ? (
-        <Text variant="caption" style={{ color: '#F87171' }} marginTop="xxs">
+        <Text variant="caption" style={{ color: '#DC2626' }} marginTop="xxs">
           {capture.syncError}
         </Text>
       ) : null}
@@ -66,8 +84,23 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   thumbnail: {
-    width: 72,
-    height: 72,
+    width: 56,
+    height: 56,
     borderRadius: 10,
+  },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  deleteIcon: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

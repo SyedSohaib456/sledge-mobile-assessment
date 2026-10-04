@@ -1,62 +1,91 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import * as Network from 'expo-network';
-import { useCaptureStore } from '../store/captureStore';
-import { syncPendingCaptures } from '../services/syncService';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { AppState } from "react-native";
+import * as Network from "expo-network";
+import { useCaptureStore } from "../store/captureStore";
+import { syncPendingCaptures } from "../services/syncService";
+import { useToast } from "../components/Toast";
 
 export function useNetworkSync() {
   const [isOnline, setIsOnline] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const wasOnlineRef = useRef(true);
-  const { captures, updateSyncStatus, loadFromStorage, isLoaded } = useCaptureStore();
+  const isSyncingRef = useRef(false);
+  const toast = useToast();
 
-  const checkAndSync = useCallback(async () => {
+  const doSync = useCallback(async () => {
+    if (isSyncingRef.current) return;
+
     const state = await Network.getNetworkStateAsync();
-    const online = state.isConnected === true && state.isInternetReachable !== false;
+    const online =
+      state.isConnected === true && state.isInternetReachable !== false;
     setIsOnline(online);
 
-    const justCameOnline = !wasOnlineRef.current && online;
+    if (!wasOnlineRef.current && online) {
+      toast.success("Back online", {
+        description: "Syncing pending captures...",
+      });
+    } else if (wasOnlineRef.current && !online) {
+      toast.warning("You're offline", {
+        description: "Captures will sync when reconnected",
+      });
+    }
     wasOnlineRef.current = online;
 
-    if (online && !isSyncing) {
-      const hasPending = useCaptureStore
+    if (!online) return;
+
+    const hasPending = useCaptureStore
+      .getState()
+      .captures.some(
+        (c) =>
+          (c.syncStatus === "pending" || c.syncStatus === "error") &&
+          c.retryCount < 3,
+      );
+    if (!hasPending) return;
+
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      await syncPendingCaptures(toast);
+      setLastSyncAt(Date.now());
+
+      const stillPending = useCaptureStore
         .getState()
-        .captures.some(c => c.syncStatus === 'pending' || c.syncStatus === 'error');
-
-      if (hasPending || justCameOnline) {
-        setIsSyncing(true);
-        try {
-          await syncPendingCaptures(useCaptureStore.getState().captures, updateSyncStatus);
-          setLastSyncAt(Date.now());
-        } finally {
-          setIsSyncing(false);
-        }
+        .captures.some((c) => c.syncStatus === "error" && c.retryCount < 3);
+      if (stillPending) {
+        await syncPendingCaptures(toast);
+        setLastSyncAt(Date.now());
       }
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
     }
-  }, [isSyncing, updateSyncStatus]);
+  }, [toast]);
 
-  // Load persisted data on mount
   useEffect(() => {
-    loadFromStorage();
+    useCaptureStore.getState().loadFromStorage();
   }, []);
 
-  // Sync once data is loaded
+  const isLoaded = useCaptureStore((s) => s.isLoaded);
   useEffect(() => {
-    if (isLoaded) {
-      checkAndSync();
-    }
+    if (isLoaded) doSync();
   }, [isLoaded]);
 
-  // Poll every 30s
   useEffect(() => {
-    const interval = setInterval(checkAndSync, 30_000);
+    const interval = setInterval(doSync, 5_000);
     return () => clearInterval(interval);
-  }, [checkAndSync]);
+  }, [doSync]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") doSync();
+    });
+    return () => sub.remove();
+  }, [doSync]);
 
   const triggerSync = useCallback(async () => {
-    if (isSyncing) return;
-    await checkAndSync();
-  }, [checkAndSync, isSyncing]);
+    await doSync();
+  }, [doSync]);
 
   return { isOnline, lastSyncAt, isSyncing, triggerSync };
 }

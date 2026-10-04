@@ -11,6 +11,8 @@ export type Capture = {
   createdAt: number;
   syncStatus: SyncStatus;
   syncError?: string;
+  retryCount: number;
+  lastAttemptAt?: number;
 };
 
 type CaptureStore = {
@@ -18,11 +20,15 @@ type CaptureStore = {
   isLoaded: boolean;
   addCapture: (title: string, notes: string, photoUri?: string) => void;
   updateSyncStatus: (id: string, status: SyncStatus, error?: string) => void;
+  incrementRetry: (id: string) => void;
+  deleteCapture: (id: string) => void;
+  clearAll: () => void;
   loadFromStorage: () => Promise<void>;
   persistToStorage: (captures: Capture[]) => Promise<void>;
 };
 
 const STORAGE_KEY = 'sledge_captures';
+export const MAX_RETRIES = 3;
 
 export const useCaptureStore = create<CaptureStore>((set, get) => ({
   captures: [],
@@ -36,6 +42,7 @@ export const useCaptureStore = create<CaptureStore>((set, get) => ({
       photoUri,
       createdAt: Date.now(),
       syncStatus: 'pending',
+      retryCount: 0,
     };
     const updated = [newCapture, ...get().captures];
     set({ captures: updated });
@@ -44,10 +51,36 @@ export const useCaptureStore = create<CaptureStore>((set, get) => ({
 
   updateSyncStatus: (id, status, error) => {
     const updated = get().captures.map(c =>
-      c.id === id ? { ...c, syncStatus: status, syncError: error } : c,
+      c.id === id
+        ? {
+            ...c,
+            syncStatus: status,
+            syncError: error,
+            lastAttemptAt: status === 'syncing' ? Date.now() : c.lastAttemptAt,
+          }
+        : c,
     );
     set({ captures: updated });
     get().persistToStorage(updated);
+  },
+
+  incrementRetry: id => {
+    const updated = get().captures.map(c =>
+      c.id === id ? { ...c, retryCount: c.retryCount + 1 } : c,
+    );
+    set({ captures: updated });
+    get().persistToStorage(updated);
+  },
+
+  deleteCapture: id => {
+    const updated = get().captures.filter(c => c.id !== id);
+    set({ captures: updated });
+    get().persistToStorage(updated);
+  },
+
+  clearAll: () => {
+    set({ captures: [] });
+    AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   },
 
   loadFromStorage: async () => {
@@ -55,7 +88,7 @@ export const useCaptureStore = create<CaptureStore>((set, get) => ({
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const captures: Capture[] = JSON.parse(raw);
-        // Reset any 'syncing' captures back to 'pending' on load (app was killed mid-sync)
+        // Reset any 'syncing' → 'pending' on load (app was killed mid-sync)
         const normalized = captures.map(c =>
           c.syncStatus === 'syncing' ? { ...c, syncStatus: 'pending' as SyncStatus } : c,
         );
